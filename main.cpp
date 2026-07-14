@@ -13,7 +13,7 @@ return true;
 }
 int main(){
 vector<int> primes;
-for(int i=3;i<1000;i+=2){
+for(int i=3;i<2000;i+=2){
 if(is_prime(i))primes.push_back(i);
 }
 int num_primes=primes.size();
@@ -24,24 +24,26 @@ mpz_ui_pow_ui(pows[i],primes[i],primes[i]);
 }
 mpz_t sum;
 mpz_init(sum);
+int found_count=0;
 for(int c=2;c<num_primes;c++){
 for(int b=1;b<c;b++){
 for(int a=0;a<b;a++){
 mpz_add(sum,pows[a],pows[b]);
 mpz_add(sum,sum,pows[c]);
 if(mpz_probab_prime_p(sum,25)>0){
-cout<<"Success!"<<endl;
-cout<<"a="<<primes[a]<<", b="<<primes[b]<<", c="<<primes[c]<<endl;
-gmp_printf("Prime: %Zd\n",sum);
+found_count++;
+cout<<"["<<found_count<<"] a="<<primes[a]<<", b="<<primes[b]<<", c="<<primes[c]<<endl;
+if(found_count>=100){
+goto finish;
+}
+}
+}
+}
+}
+finish:
 for(int i=0;i<num_primes;i++)mpz_clear(pows[i]);
 mpz_clear(sum);
-return 0;
-}
-}
-}
-}
-for(int i=0;i<num_primes;i++)mpz_clear(pows[i]);
-mpz_clear(sum);
-cout<<"Not found in the given range."<<endl;
+if(found_count<100)cout<<"Found only "<<found_count<<" in the given range."<<endl;
+else cout<<"Successfully found 100 combinations."<<endl;
 return 0;
 }
