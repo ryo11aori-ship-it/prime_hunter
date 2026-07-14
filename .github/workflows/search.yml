@@ -1,0 +1,13 @@
+name: "PrimeSearch"
+on: ["workflow_dispatch"]
+jobs:
+  build:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v4"
+      - name: "Install GMP library"
+        run: "sudo apt-get update && sudo apt-get install -y libgmp-dev"
+      - name: "Compile C++ code"
+        run: "g++ -O3 main.cpp -lgmp -o search"
+      - name: "Run Search"
+        run: "./search"
