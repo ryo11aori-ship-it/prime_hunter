@@ -1,13 +1,20 @@
 name: "PrimeSearch"
 on: ["workflow_dispatch"]
+
 jobs:
   build:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
+      
       - name: "Install GMP library"
-        run: "sudo apt-get update && sudo apt-get install -y libgmp-dev"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgmp-dev
+          
       - name: "Compile C++ code"
-        run: "g++ -O3 main.cpp -lgmp -o search"
-      - name: "Run Search"
+        # O3最適化に加え、CPU固有の命令セットを有効化
+        run: "g++ -O3 -march=native -funroll-loops main.cpp -lgmp -o search"
+        
+      - name: "Run Search (Timeout handled by C++ binary)"
         run: "./search"
