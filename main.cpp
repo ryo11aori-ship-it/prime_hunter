@@ -8,20 +8,20 @@ using namespace std;
 using namespace std::chrono;
 
 // 64ビット高速べき乗剰余 (base^exp % mod)
-long long power_mod(long long base, long long exp, long long mod) {
+inline long long power_mod(long long base, long long exp, long long mod) {
     long long res = 1;
     base %= mod;
     if (base == 0) return 0;
     while (exp > 0) {
-        if (exp & 1) res = (__int128)res * base % mod; // オーバーフロー防止用の128bitキャスト
-        base = (__int128)base * base % mod;
+        if (exp & 1) res = (long long)((__int128)res * base % mod); // 128bitでオーバーフロー防止
+        base = (long long)((__int128)base * base % mod);
         exp >>= 1;
     }
     return res;
 }
 
 // p^p % q を高速計算
-long long p_pow_p_mod_q(long long p, long long q) {
+inline long long p_pow_p_mod_q(long long p, long long q) {
     if (p % q == 0) return 0;
     long long exp = p % (q - 1);
     return power_mod(p, exp, q);
@@ -47,53 +47,76 @@ vector<int> generate_primes(int limit) {
 int main() {
     setbuf(stdout, NULL);
     auto start_time = steady_clock::now();
-    const int TIME_LIMIT_SEC = 300; // 5分
+    const int TIME_LIMIT_SEC = 290; // 安全のため290秒で終了
 
-    // 探索上限を「5000万（50M）」まで超絶拡張（素数は約300万個存在）
-    int limit = 50000000; 
+    // 探索上限を 50万 に設定（素数は38,000個以上。これでも従来の数万倍広い）
+    int limit = 500000; 
     cout << "Generating primes up to " << limit << "..." << endl;
     vector<int> primes = generate_primes(limit);
     int num_primes = primes.size();
     cout << "Generated " << num_primes << " primes." << endl;
 
-    // フィルター用素数として、最初の200個の素数（3から1223まで）を使用
-    int num_filter_primes = min(200, num_primes);
-    vector<int> filter_primes(primes.begin(), primes.begin() + num_filter_primes);
+    // フィルター用奇素数を1000個用意（3から7927までの素数）
+    vector<int> filter_primes;
+    for (int p : primes) {
+        if (p == 2) continue;
+        filter_primes.push_back(p);
+        if (filter_primes.size() >= 1000) break;
+    }
+    int F = filter_primes.size();
+    cout << "Using " << F << " filter primes (from " << filter_primes.front() << " to " << filter_primes.back() << ")." << endl;
+
+    // ローリングバッファ用の剰余テーブル [3][F]
+    // rem[i % 3][j] に primes[i]^primes[i] % filter_primes[j] を格納
+    vector<vector<long long>> rem(3, vector<long long>(F));
+
+    // 最初の2つの素数(2, 3)の剰余をあらかじめ計算しておく
+    for (int j = 0; j < F; j++) {
+        rem[0][j] = p_pow_p_mod_q(primes[0], filter_primes[j]);
+        rem[1][j] = p_pow_p_mod_q(primes[1], filter_primes[j]);
+    }
 
     int found_count = 0;
     long long checked_count = 0;
-    cout << "Starting hyper-optimized search with 200-stage prime filter..." << endl;
+    cout << "Starting hyper-optimized search..." << endl;
 
-    for (int i = 0; i < num_primes - 2; i++) {
-        // 10000ループごとにタイムアウトを判定（オーバーヘッドを極限まで削減）
-        if (i % 10000 == 0) {
+    for (int i = 2; i < num_primes; i++) {
+        // 1000ループごとにタイムアウト判定（ラグをミリ秒以下に）
+        if (i % 1000 == 0) {
             auto elapsed = duration_cast<seconds>(steady_clock::now() - start_time).count();
             if (elapsed >= TIME_LIMIT_SEC) {
-                cout << "\n[Timeout] 5 minutes reached. Stopping search." << endl;
+                cout << "\n[Timeout] " << TIME_LIMIT_SEC << " seconds reached. Stopping search." << endl;
                 break;
             }
         }
 
-        int a = primes[i];
-        int b = primes[i + 1];
-        int c = primes[i + 2];
+        int a = primes[i - 2];
+        int b = primes[i - 1];
+        int c = primes[i];
         checked_count++;
 
-        // 200段階の高速Moduloフィルター
-        bool pass_filter = true;
-        for (int q : filter_primes) {
-            long long rem = 0;
-            rem = (rem + p_pow_p_mod_q(a, q)) % q;
-            rem = (rem + p_pow_p_mod_q(b, q)) % q;
-            rem = (rem + p_pow_p_mod_q(c, q)) % q;
+        int c_idx = i % 3;
+        int a_idx = (i - 2) % 3;
+        int b_idx = (i - 1) % 3;
 
-            if (rem == 0) {
+        // 新しく入ってきた c^c % q のみを計算（重複計算の排除）
+        for (int j = 0; j < F; j++) {
+            rem[c_idx][j] = p_pow_p_mod_q(c, filter_primes[j]);
+        }
+
+        // 1000段階の高速Moduloフィルター
+        bool pass_filter = true;
+        for (int j = 0; j < F; j++) {
+            long long q = filter_primes[j];
+            long long sum_rem = (rem[a_idx][j] + rem[b_idx][j] + rem[c_idx][j]) % q;
+
+            if (sum_rem == 0) {
                 pass_filter = false;
-                break; // 合成数確定なので即座に次の3つ組へ
+                break; // 合成数確定なので即座にスキップ
             }
         }
 
-        // 奇跡的に200段階のフィルターをすべて突破した「本物の候補」のみ、GMPで実計算
+        // 奇跡的に1000個のフィルターをすべて突破した「本物の候補」のみ、GMPで実計算
         if (pass_filter) {
             mpz_t gmp_a, gmp_b, gmp_c, gmp_sum;
             mpz_inits(gmp_a, gmp_b, gmp_c, gmp_sum, NULL);
